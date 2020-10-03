@@ -1,6 +1,6 @@
 """
 
-xemu v0.249b, by Parzival Wolfram <parzivalwolfram@gmail.com>
+xemu v0.254b, by Parzival Wolfram <parzivalwolfram@gmail.com>
 emulated CPU by ccc814p (https://github.com/ccc814p)
 this code is under the MIT license
 load a ROM from "rom.bin" next to it by default, can specify once ran
@@ -252,9 +252,12 @@ def commandprocessor(commandIn):
         global outputNew
         global ROM
         global RAM
-        commandparts = commandIn.split(" ") #split input into chunks to parse
-        del commandIn #free a little RAM
-        commandfunc = str(commandparts[0]).lower() #what are we to do?
+        if commandIn == "":
+                commandfunc = "step" #this emulates legacy xemu "hold ENTER to step" functionality. Yes, xemu was that basic once. 
+        else:
+                commandparts = commandIn.split(" ") #split input into chunks to parse
+                del commandIn #free a little RAM
+                commandfunc = str(commandparts[0]).lower() #what are we to do?   
         if commandfunc == "write" or commandfunc == "poke": #Should write to a RAM location (or I/O, though those are only separate in the emulator)
                 try: #check if we were told where to write to
                         commandwhere = commandparts[1]
@@ -339,7 +342,6 @@ def commandprocessor(commandIn):
                 if BRK == 1:
                         print("Cannot step, BRK processed. Please RESET.") #since a BRK should halt the CPU
                 else:
-                        commandcount = int(commandcount) #python weirdness catcher
                         if commandcount == None: #if no second argument, just do one
                                 doStep()
                         elif int(commandcount) < 1: #how the fuck do we step 0 times? or negative times?
@@ -364,7 +366,7 @@ def commandprocessor(commandIn):
         elif commandfunc == "quit" or commandfunc == "exit": #quit emulator
                 return "QUIT"
         elif commandfunc == "help" or commandfunc == "what" or commandfunc == "?": # print list of commands, update string when a new one is added
-                print("Command processor help:\nWRITE/POKE <where> <what>: Writes to RAM or virtual I/O.\nRESET/REBOOT/RESTART: Reboots the emulated CPU.\nLOAD <filename> (preserve): Loads a ROM. If the \"preserve\" keyword is included, the emulated CPU won't be reset after load.\nINPUT <char>: Writes a character to the emulated CPU's Input I/O. Only valid Mini-ASCII is supported.\nSTEP (count): Steps forward one CPU cycle. If the \"count\" parameter is included, STEP that many cycles at once.\nRUN/GO: Run until BRK processed. Cannot be interrupted, so be careful of infinite loops!\nPRINT/TELL/OUTPUT: Prints debug information (like you get after a STEP.)\nQUIT: Quits the emulator.")
+                print("Command processor help:\nWRITE/POKE <where> <what>: Writes to RAM or virtual I/O.\nRESET/REBOOT/RESTART: Reboots the emulated CPU.\nLOAD <filename> (preserve): Loads a ROM. If the \"preserve\" keyword is included, the emulated CPU won't be reset after load.\nINPUT <char>: Writes a character to the emulated CPU's Input I/O. Only valid Mini-ASCII is supported.\nSTEP (count): Steps forward one CPU cycle. If the \"count\" parameter is included, STEP that many cycles at once. (You can press or hold ENTER to quickly STEP.)\nRUN/GO: Run until BRK processed. Cannot be interrupted, so be careful of infinite loops!\nPRINT/TELL/OUTPUT: Prints debug information (like you get after a STEP.)\nQUIT: Quits the emulator.")
                 return ""
         else: #we have no command by that name
                 return "COMMAND" #please try again
