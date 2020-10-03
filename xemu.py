@@ -1,6 +1,6 @@
 """
 
-xemu v0.247b, by Parzival Wolfram <parzivalwolfram@gmail.com>
+xemu v0.249b, by Parzival Wolfram <parzivalwolfram@gmail.com>
 emulated CPU by ccc814p (https://github.com/ccc814p)
 this code is under the MIT license
 load a ROM from "rom.bin" next to it by default, can specify once ran
@@ -42,7 +42,7 @@ def initVars(): #for use in the command processor
         global O
         global P
         global BRK
-        global charBuffer
+        global charbuffer
         global outputString
         RAM = [0]*14
         inputIO = 0
