@@ -1,17 +1,22 @@
 """
 
-xemu v0.215b, by Parzival Wolfram <parzivalwolfram@gmail.com>
+xemu v0.247b, by Parzival Wolfram <parzivalwolfram@gmail.com>
 emulated CPU by ccc814p (https://github.com/ccc814p)
 this code is under the MIT license
-load a ROM from "rom.bin" next to it by default, can specify on launch if not present
+load a ROM from "rom.bin" next to it by default, can specify once ran
+thanks to netikras (https://github.com/netikras), SortOfTested (https://devrant.com/users/SortOfTested)
+and sbiewald (https://github.com/varbin) for optimization help
 
 """
+
 #important stuff
 ROM = ["00"]*16 #0-$ff values, 0-15 addresses, with rules, map indirect via P and PC and not actual address lines
 RAM = [0]*14 #0-15 values, but $E and $F are I/O for...
 inputIO = 0 #0-15, but input from... keyboard or w/e. Located at $F.
 outputIO = 0 #0-15, but outputs to... screen or w/e. Located at $E.
 outputNew = 0 #Emulator-only flag for internal use, not to be implemented in a real CPU unless necessary (it probably will be)
+inputdict = {" ":0,"l":1,"o":2,"r":3,"h":4,"d":5,"i":6,"n":7,"m":8,"g":9,"a":10,"b":11,"c":12,"f":13,"e":14,"t":15} #Mini-ASCII input dict
+outputdict = {0:" ",1:"L",2:"O",3:"R",4:"H",5:"D",6:"I",7:"N",8:"M",9:"G",10:"A",11:"B",12:"C",13:"F",14:"E",15:"T"} #Mini-ASCII output dict
 
 #registers
 A = 0 #A register of the ALU. Technically, the ALU stuff will be hardware-backed if you have an x86 FPU!
@@ -26,7 +31,7 @@ charbuffer = [" "]*32
 outputString = " "*32
 
 def initVars(): #for use in the command processor
-        global inputIO #you will se this a lot and it makes me wanna die but python's gay and i need to convert these to a class or some shit
+        global inputIO #you will se this a lot and it makes me wanna die but python's stupid and i need to convert these to a class or some shit eventually
         global outputIO
         global outputNew
         global PC
@@ -65,21 +70,10 @@ def romloader(romName="rom.bin"): #improved romloader: still shit, just now it w
                 ROM[transferLoop] = ROM_data[transferLoop]
                 transferLoop += 1
         del ROM_data #depending on original file's size, frees up to 16MB or so of RAM
-        del transferLoop #frees like 4KB, but fuck it why not?
+        del transferLoop #frees like 4KB, but fuck it, why not?
         del hexlify #does this even work? it'd free up like 5MB if it does
-
-try:
-        romloader("rom.bin")
-except:
-        while True: #exception loops are gay
-                try:
-                        romloader(input("Bad or missing ROM.BIN\nPlease specify a file to use.\nInput>"))
-                except:
-                        continue
-                else:
-                        break
-
-#set up easy decoding for later
+        
+#set up easy opcode decoding for later
 def decodeUpperNybble(byteIn): #called first to see what opcode we have
         return int(str(byteIn)[0],16)
 def decodeLowerNybble(byteIn): #may not even be called literally ever
@@ -99,10 +93,11 @@ def doInstruction(byteIn):
         P = ROM[PC]
         upperNybble = decodeUpperNybble(byteIn)
         #welcome to "python doesn't have case statements"
+        #hey, good news: py3.10 is gonna be exciting for that exact reason, expect most of this emulator to be updated when that's out
         if upperNybble == 0: #BRK: Break... kinda. Halts execution permanently
                 print("DEBUG: BRK")
                 BRK = 1
-                return "" #you'll see this a lot, return an empty string unless we are to jump
+                return "" #you'll see this a lot, we return an empty string unless we are to jump, hacky but it works well so w/e
         elif upperNybble == 1: #ADD: Add. Adds A to B and outputs to O
                 print("DEBUG: ADD")
                 O=(A+B)%16
@@ -111,7 +106,7 @@ def doInstruction(byteIn):
                 print("DEBUG: SUB")
                 O=abs(A-B)%16
                 return ""
-        elif upperNybble == 3: #LAM: Load A from Memory, loads A from memory location determined by lower bybble
+        elif upperNybble == 3: #LAM: Load A from Memory, loads A from memory location determined by lower nybble
                 target = decodeLowerNybble(byteIn)
                 print("DEBUG: LAM "+str(target))
                 if target == 15: #because nybbles 14 and 15 are actually I/O, we need to check that we're not grabbing those, because they're separate vars
@@ -121,7 +116,7 @@ def doInstruction(byteIn):
                 else:
                         A=RAM[target]
                 return ""
-        elif upperNybble == 4: #LDA: Load A from immediate (lower nybble)
+        elif upperNybble == 4: #LDA: Load A from immediate (lower nybble stored into A)
                 print("DEBUG: LDA "+str(decodeLowerNybble(byteIn)))
                 A=decodeLowerNybble(byteIn)
                 return ""
@@ -145,7 +140,7 @@ def doInstruction(byteIn):
                 else:
                         B=RAM[target]
                 return ""
-        elif upperNybble == 8: #JMP: Jump, jumps to lower nybble
+        elif upperNybble == 8: #JMP: Jump, jumps to address determined by lower nybble
                 print("DEBUG: JMP "+str(decodeLowerNybble(byteIn)))
                 return decodeLowerNybble(byteIn)
         elif upperNybble == 9: #SOM: Store O to Memory, writes O to a memory location determined by lower nybble.
@@ -184,50 +179,17 @@ def doInstruction(byteIn):
                 O=abs(~(A^B))%16
                 return ""
         else:
-                print("!!!CRASH!!!: upperNybble="+str(upperNybble)) #to catch any funky Python logic, since sometimes it forgets what if statements are
+                print("!!!CRASH!!!: out of bounds opcode found! upperNybble="+str(upperNybble)+",lowerNybble="+str(lowerNybble)) #to catch any funky Python logic, since sometimes it forgets what if statements are
                 exit(1)
 #handle the emulated keyboard, which doesn't really have to be a keyboard, but we'll just use it as one here because it's easier
 def inputHandler(charIn): #charset given working title of "Mini-ASCII"
         global inputIO
-        try:
-                charIn = charIn[0].lower()
-                if charIn == " ":
-                        inputIO = 0
-                elif charIn == "l":
-                        inputIO = 1
-                elif charIn == "o":
-                        inputIO = 2
-                elif charIn == "r":
-                        inputIO = 3
-                elif charIn == "h":
-                        inputIO = 4
-                elif charIn == "d":
-                        inputIO = 5
-                elif charIn == "i":
-                        inputIO = 6
-                elif charIn == "n":
-                        inputIO = 7
-                elif charIn == "m":
-                        inputIO = 8
-                elif charIn == "g":
-                        inputIO = 9
-                elif charIn == "a":
-                        inputIO = 10
-                elif charIn == "b":
-                        inputIO = 11
-                elif charIn == "c":
-                        inputIO = 12
-                elif charIn == "f":
-                        inputIO = 13
-                elif charIn == "e":
-                        inputIO = 14
-                elif charIn == "t":
-                        inputIO = 15
-                else:
-                        return "INVCHAR"
-        except: #this catches more occasionally-funky Python logic
-                return "INVCHAR"
-        return ""
+        global inputdict
+        getresult = inputdict.get(charIn.lower())
+        if getresult != None:
+                inputIO = getresult
+                return ""
+        return "INVCHAR"
 
 #handles the emulated screen, which can be anything, really, but here it's a 32-char shift screen
 def outputHandler():
@@ -235,41 +197,15 @@ def outputHandler():
         global outputIO
         global charbuffer
         global outputString
+        global outputdict
         if outputNew==1:
-                if outputIO == 0:
-                        charbuffer.append(" ")
-                elif outputIO == 1:
-                        charbuffer.append("L")
-                elif outputIO == 2:
-                        charbuffer.append("O")
-                elif outputIO == 3:
-                        charbuffer.append("R")
-                elif outputIO == 4:
-                        charbuffer.append("H")
-                elif outputIO == 5:
-                        charbuffer.append("D")
-                elif outputIO == 6:
-                        charbuffer.append("I")
-                elif outputIO == 7:
-                        charbuffer.append("N")
-                elif outputIO == 8:
-                        charbuffer.append("M")
-                elif outputIO == 9:
-                        charbuffer.append("G")
-                elif outputIO == 10:
-                        charbuffer.append("A")
-                elif outputIO == 11:
-                        charbuffer.append("B")
-                elif outputIO == 12:
-                        charbuffer.append("C")
-                elif outputIO == 13:
-                        charbuffer.append("F")
-                elif outputIO == 14:
-                        charbuffer.append("E")
-                elif outputIO == 15:
-                        charbuffer.append("T")
-                del charbuffer[0]
+                getresult = outputdict.get(outputIO)
+                if getresult == None:
+                        print("!!!CRASH!!!: out of bounds value sent from CPU! outputIO="+str(outputIO))
+                        exit(1)
+                charbuffer.append(getresult)
                 outputNew = 0
+                del charbuffer[0]
         outputString = ""
         for i in charbuffer:
                 outputString+=i
@@ -288,6 +224,7 @@ def doStep():
         global outputIO
         global BRK
         global outputNew
+        global outputString
         resultCode = ""
         resultCode = doInstruction(ROM[PC]) #we gotta catch jump codes if they pop up, so trap return value
         if resultCode == "": #hacky jump code, but w/e
@@ -432,7 +369,20 @@ def commandprocessor(commandIn):
         else: #we have no command by that name
                 return "COMMAND" #please try again
 
+
+
 #this is all that's left of the main body of the original script.
+try:
+        romloader("rom.bin")
+except:
+        while True: #exception loops are stupid but sometimes it's all you got
+                try:
+                        romloader(input("Bad or missing ROM.BIN\nPlease specify a file to use.\nInput>"))
+                except:
+                        continue
+                else:
+                        break
+
 commandresult = ""
 commandIn = input("Enter a command to run.\nInput> ") #pre-seed the interpreter
 while True: #loop the interpreter
