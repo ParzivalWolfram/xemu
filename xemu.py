@@ -1,6 +1,6 @@
 """
 
-xemu v0.254b, by Parzival Wolfram <parzivalwolfram@gmail.com>
+xemu v0.291b, by Parzival Wolfram <parzivalwolfram@gmail.com>
 emulated CPU by ccc814p (https://github.com/ccc814p)
 this code is under the MIT license
 load a ROM from "rom.bin" next to it by default, can specify once ran
@@ -8,6 +8,8 @@ thanks to netikras (https://github.com/netikras), SortOfTested (https://devrant.
 and sbiewald (https://github.com/varbin) for optimization help
 
 """
+
+from time import time
 
 #important stuff
 ROM = ["00"]*16 #0-$ff values, 0-15 addresses, with rules, map indirect via P and PC and not actual address lines
@@ -25,6 +27,7 @@ O = 0 #Output, or O, register of the ALU.
 PC = 0 #Program Counter, current address in ROM.
 P = 0 #Program register, this is 8-bit but is processed in upper/lower halves. Bits 0-3 are processed first, bits 4-7 are dropped if it's a 1-nybble op or taken as the second nybble for 2-nybble things.
 BRK = 0 #Emulator register, not present on a "real" x04, for internal use only
+silent = False #used for internal benchmark and silent mode
 
 #sliding screen for characters, emulator-only, real screen may differ if ever made
 charbuffer = [" "]*32
@@ -81,6 +84,7 @@ def decodeLowerNybble(byteIn): #may not even be called literally ever
 
 #really terrible meat of the emulated CPU
 def doInstruction(byteIn):
+        global silent
         global A
         global B
         global O
@@ -95,20 +99,24 @@ def doInstruction(byteIn):
         #welcome to "python doesn't have case statements"
         #hey, good news: py3.10 is gonna be exciting for that exact reason, expect most of this emulator to be updated when that's out
         if upperNybble == 0: #BRK: Break... kinda. Halts execution permanently
-                print("DEBUG: BRK")
+                if not silent:
+                        print("DEBUG: BRK")
                 BRK = 1
                 return "" #you'll see this a lot, we return an empty string unless we are to jump, hacky but it works well so w/e
         elif upperNybble == 1: #ADD: Add. Adds A to B and outputs to O
-                print("DEBUG: ADD")
+                if not silent:
+                        print("DEBUG: ADD")
                 O=(A+B)%16
                 return ""
         elif upperNybble == 2: #SUB: Subtract. Subtracts A from B and stores the output into O
-                print("DEBUG: SUB")
+                if not silent:
+                        print("DEBUG: SUB")
                 O=abs(A-B)%16
                 return ""
         elif upperNybble == 3: #LAM: Load A from Memory, loads A from memory location determined by lower nybble
                 target = decodeLowerNybble(byteIn)
-                print("DEBUG: LAM "+str(target))
+                if not silent:
+                        print("DEBUG: LAM "+str(target))
                 if target == 15: #because nybbles 14 and 15 are actually I/O, we need to check that we're not grabbing those, because they're separate vars
                         A=inputIO
                 elif target == 14:
@@ -117,22 +125,26 @@ def doInstruction(byteIn):
                         A=RAM[target]
                 return ""
         elif upperNybble == 4: #LDA: Load A from immediate (lower nybble stored into A)
-                print("DEBUG: LDA "+str(decodeLowerNybble(byteIn)))
+                if not silent:
+                        print("DEBUG: LDA "+str(decodeLowerNybble(byteIn)))
                 A=decodeLowerNybble(byteIn)
                 return ""
         elif upperNybble == 5: #ZJP: Zero Jump. Only if A is 0, jump.
-                print("DEBUG: ZJP "+str(decodeLowerNybble(byteIn)))
+                if not silent:
+                        print("DEBUG: ZJP "+str(decodeLowerNybble(byteIn)))
                 if A==0:
                         return decodeLowerNybble(byteIn)
                 else:
                         return ""
         elif upperNybble == 6: #LDB: Load B from immediate (lower nybble)
-                print("DEBUG: LDB "+str(decodeLowerNybble(byteIn)))
+                if not silent:
+                        print("DEBUG: LDB "+str(decodeLowerNybble(byteIn)))
                 B=decodeLowerNybble(byteIn)
                 return ""
         elif upperNybble == 7: #LBM: Load B from Memory, load A from memory nybble determined by lower nybble
                 target = decodeLowerNybble(byteIn)
-                print("DEBUG: LBM "+str(target))
+                if not silent:
+                        print("DEBUG: LBM "+str(target))
                 if target == 15:
                         B=inputIO
                 elif target == 14:
@@ -141,11 +153,13 @@ def doInstruction(byteIn):
                         B=RAM[target]
                 return ""
         elif upperNybble == 8: #JMP: Jump, jumps to address determined by lower nybble
-                print("DEBUG: JMP "+str(decodeLowerNybble(byteIn)))
+                if not silent:
+                        print("DEBUG: JMP "+str(decodeLowerNybble(byteIn)))
                 return decodeLowerNybble(byteIn)
         elif upperNybble == 9: #SOM: Store O to Memory, writes O to a memory location determined by lower nybble.
                 target = decodeLowerNybble(byteIn)
-                print("DEBUG: SOM "+str(target))
+                if not silent:
+                        print("DEBUG: SOM "+str(target))
                 if target == 15:
                         inputIO=O
                 elif target == 14:
@@ -155,27 +169,33 @@ def doInstruction(byteIn):
                         RAM[target]=O
                 return ""
         elif upperNybble == 10: #AND: Bitwise AND A and B, store into O.
-                print("DEBUG: AND")
+                if not silent:
+                        print("DEBUG: AND")
                 O=(A&B)%16
                 return ""
         elif upperNybble == 11: #OR: Bitwise OR A and B, store into O.
-                print("DEBUG: OR")
+                if not silent:
+                        print("DEBUG: OR")
                 O=(A|B)%16
                 return ""
         elif upperNybble == 12: #XOR: Bitwise XOR A and B, store into O.
-                print("DEBUG: XOR")
+                if not silent:
+                        print("DEBUG: XOR")
                 O=(A^B)%16
                 return ""
         elif upperNybble == 13: #NND: Bitwise NAND A and B, store into O.
-                print("DEBUG: NND")
+                if not silent:
+                        print("DEBUG: NND")
                 O=abs(~(A&B))%16 #this may not work like this out of the box, i may have to split it
                 return ""
         elif upperNybble == 14: #NOR: Bitwise NOR A and B, store into O.
-                print("DEBUG: NOR")
+                if not silent:
+                        print("DEBUG: NOR")
                 O=abs(~(A|B))%16
                 return ""
         elif upperNybble == 15: #XNR: Bitwise XNOR A and B, store into O.
-                print("DEBUG: XNR")
+                if not silent:
+                        print("DEBUG: XNR")
                 O=abs(~(A^B))%16
                 return ""
         else:
@@ -225,6 +245,7 @@ def doStep():
         global BRK
         global outputNew
         global outputString
+        global silent
         resultCode = ""
         resultCode = doInstruction(ROM[PC]) #we gotta catch jump codes if they pop up, so trap return value
         if resultCode == "": #hacky jump code, but w/e
@@ -232,9 +253,10 @@ def doStep():
         else:
                 PC = resultCode
         PC=PC%16 #as PC can't be >15
-        print("DEBUG: PC=$"+str(hex(PC)[2:]).upper()+",ROM[PC]=$"+str(ROM[PC]).upper()+",A=$"+str(hex(A)[2:]).upper()+",B=$"+str(hex(B)[2:]).upper()+",O=$"+str(hex(O)[2:]).upper()+",BRK="+str(BRK)+",P="+str("{0:08b}").format(int(P,16))+",OUT=$"+str(hex(outputIO)[2:]).upper()+",IN=$"+str(hex(inputIO)[2:]).upper()+",OUT_NEW="+str(outputNew)) #i'm not sorry for this monster of a line
-        print("DEBUG: RAM="+str(RAM))
-        print("DEBUG: outputString="+outputString)
+        if not silent:
+                print("DEBUG: PC=$"+str(hex(PC)[2:]).upper()+",ROM[PC]=$"+str(ROM[PC]).upper()+",A=$"+str(hex(A)[2:]).upper()+",B=$"+str(hex(B)[2:]).upper()+",O=$"+str(hex(O)[2:]).upper()+",BRK="+str(BRK)+",P="+str("{0:08b}").format(int(P,16))+",OUT=$"+str(hex(outputIO)[2:]).upper()+",IN=$"+str(hex(inputIO)[2:]).upper()+",OUT_NEW="+str(outputNew)) #i'm not sorry for this monster of a line
+                print("DEBUG: RAM="+str(RAM))
+                print("DEBUG: outputString="+outputString)
         inputIO = 0
         outputHandler()
         return
@@ -252,6 +274,7 @@ def commandprocessor(commandIn):
         global outputNew
         global ROM
         global RAM
+        global silent
         if commandIn == "":
                 commandfunc = "step" #this emulates legacy xemu "hold ENTER to step" functionality. Yes, xemu was that basic once. 
         else:
@@ -365,8 +388,49 @@ def commandprocessor(commandIn):
                 return ""
         elif commandfunc == "quit" or commandfunc == "exit": #quit emulator
                 return "QUIT"
-        elif commandfunc == "help" or commandfunc == "what" or commandfunc == "?": # print list of commands, update string when a new one is added
-                print("Command processor help:\nWRITE/POKE <where> <what>: Writes to RAM or virtual I/O.\nRESET/REBOOT/RESTART: Reboots the emulated CPU.\nLOAD <filename> (preserve): Loads a ROM. If the \"preserve\" keyword is included, the emulated CPU won't be reset after load.\nINPUT <char>: Writes a character to the emulated CPU's Input I/O. Only valid Mini-ASCII is supported.\nSTEP (count): Steps forward one CPU cycle. If the \"count\" parameter is included, STEP that many cycles at once. (You can press or hold ENTER to quickly STEP.)\nRUN/GO: Run until BRK processed. Cannot be interrupted, so be careful of infinite loops!\nPRINT/TELL/OUTPUT: Prints debug information (like you get after a STEP.)\nQUIT: Quits the emulator.")
+        elif commandfunc == "help" or commandfunc == "what" or commandfunc == "?": #print list of commands, update string when a new one is added
+                print("Command processor help:\nWRITE/POKE <where> <what>: Writes to RAM or virtual I/O.\nRESET/REBOOT/RESTART: Reboots the emulated CPU.\nLOAD <filename> (preserve): Loads a ROM. If the \"preserve\" keyword is included, the emulated CPU won't be reset after load.\nINPUT <char>: Writes a character to the emulated CPU's Input I/O. Only valid Mini-ASCII is supported.\nSTEP (count): Steps forward one CPU cycle. If the \"count\" parameter is included, STEP that many cycles at once. (You can press or hold ENTER to quickly STEP.)\nRUN/GO: Run until BRK processed. Cannot be interrupted, so be careful of infinite loops!\nPRINT/TELL/OUTPUT: Prints debug information (like you get after a STEP.)\nSILENCE: Toggles silent mode (no automatic debug output after steps, no disassembly output, etc.)\nBENCHMARK/TEST/BENCH (count): By default, times how long 500,000 x04 cycles takes on your machine in silent mode. If the \"count\" parameter is included, will time that many cycles instead. (This resets the emulated x04!)\nQUIT: Quits the emulator.")
+                return ""
+        elif commandfunc == "silence": #makes the emulator shut the fuck up
+                if silent == True:
+                        silent = False
+                else:
+                        silent = True
+                return ""
+        elif commandfunc == "bench" or commandfunc == "benchmark" or commandfunc == "test":
+                try: #checking for optional count
+                        commandcount = commandparts[1]
+                except:
+                        commandcount = None
+                        pass
+                if commandcount != None: #do we have an extra parameter?
+                        try:
+                                commandcount = int(commandcount) #is it a number?
+                        except:
+                                return "ARGVAL 1" #no, return
+                else:
+                        commandcount = 500000
+                initVars() #TODO: once we fix up the vars to be not as badly handled, backup vars and RAM before doing this 
+                backupROM = ROM 
+                ROM = ["10"]*16 #decent benchmark methinks
+                start = time()
+                counter = 0
+                backupsilent = silent
+                silent = True
+                while counter != commandcount:
+                        doStep()
+                        counter += 1
+                        #print(counter)
+                        #print(commandcount)
+                stop = time()
+                print(str(commandcount)+" steps took "+str(stop-start)+" seconds.")
+                ROM = backupROM
+                silent = backupsilent
+                del counter
+                del backupsilent
+                del backupROM
+                del start
+                del stop
                 return ""
         else: #we have no command by that name
                 return "COMMAND" #please try again
@@ -386,7 +450,7 @@ except:
                         break
 
 commandresult = ""
-commandIn = input("Enter a command to run.\nInput> ") #pre-seed the interpreter
+commandIn = input("Enter a command to run. Use HELP for a list of commands.\nInput> ") #pre-seed the interpreter
 while True: #loop the interpreter
         commandresult = commandprocessor(commandIn) #pass command string to interpreter logic body
         if commandresult != "" and commandresult != "QUIT": #did we error?
